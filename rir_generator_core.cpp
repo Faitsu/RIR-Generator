@@ -68,6 +68,7 @@ SOFTWARE.
 #include <stdlib.h>
 #include <iostream>
 #include "math.h"
+#include "matrix.h"
 #include "rir_generator_core.h"
 
 #define ROUND(x) ((x)>=0?(long)((x)+0.5):(long)((x)-0.5))
@@ -248,13 +249,28 @@ void computeRIR(double* imp, double c, double fs, double* rr, int nMicrophones, 
 
     delete[] LPI;
 }
+void clearList(double* li, int sampleSize){
+    for(int i = 0; i< sampleSize; i++){
+        li[i] = 0;
+    }
+}
+void addToLis(double* fin, double* toAdd, int s, double dist, double c){//probably going to use delay here
+    for(int i = 0; i< s; i++){
+        int delay = floor((dist/c)*s);
+        if(delay + i >= 0  && delay + i < s){
+            fin[i+ delay] += toAdd[i]/(4*M_PI*dist*(c/s)); //divide by this value to simulate sound losing energy
+        }
+    }
+}
 //Compute RIR if the microphone is outside the room
-void computeRIROutside(double* imp, double c, double fs, double* rr, int nMicrophones, int nSamples, double* ss, double* LL, double* beta, char microphone_type, int nOrder, double* microphone_angle, int isHighPassFilter){
+void computeRIROutside(double* imp, double c, double fs, double* rr, int nMicrophones, int nSamples, double* ss, double* LL, double* beta, char microphone_type, int nOrder, double* microphone_angle, int isHighPassFilter, int wSamples){
     //create variables
+    const int Tw = 2 * ROUND(0.004*fs); // The width of the low-pass FIR equals 8 ms
+    double* LPI = new double[Tw]; //for the low pass filter
     int sample = 10; //number of samples accross a wall
     double newRR[3] = {0 ,0 ,0}; //new microphone placement
-    double midpointWall[6][3]{
-        {0,LL[1]/2,LL[2]/2},
+    double midpointWall[6][3]{ 
+        {0,LL[1]/2,LL[2]/2}, 
         {LL[0],LL[1]/2,LL[2]/2},
         {LL[0]/2,0,LL[2]/2},
         {LL[0]/2,LL[1],LL[2]/2},
@@ -270,24 +286,88 @@ void computeRIROutside(double* imp, double c, double fs, double* rr, int nMicrop
     //calculate midpoints of all six walls and then calculate distance from midpoints to dest
     
     for(int ind = 0 ; ind < 6; ind++){
-        std::cout<< "Wall midpoint ind, value: "<< ind << ", "<< *(midpointWall[ind]) << '\n';
+        std::cout<< "Wall midpoint ind: "<< ind << ", value:"<< midpointWall[ind][0] << ", " << midpointWall[ind][1] << ", " <<  midpointWall[ind][2];
         //calculate distance 
-        double xcomp = pow(rr[0]-midpointWall[ind][0],2);
-        double ycomp = pow(rr[1]-midpointWall[ind][1],2);
-        double zcomp = pow(rr[2]-midpointWall[ind][2],2);
+        double xcomp = pow(rr[0]- midpointWall[ind][0],2);
+        double ycomp = pow(rr[1]- midpointWall[ind][1],2);
+        double zcomp = pow(rr[2]- midpointWall[ind][2],2);
         distWalltoDest[ind] = sqrt(xcomp + ycomp + zcomp);
+        std::cout << " dist: " << distWalltoDest[ind] << '\n';
         if(ind == 0 || mindistval > distWalltoDest[ind]){
             min = ind; 
             mindistval = distWalltoDest[ind];
         }
     }
-    std::cout << "CLOSEST WALL AND DISTANCE: " << min << ", " << mindistval <<'\n';
-    //switch case to set up sampleRR starting point
-    switch(min){
+    
+    switch(min){ //switch case to set up sampleRR starting point
         case 0:
+            //Western wall (x0)
+            newRR[0] = 0;
+            newRR[1] = 0;
             newRR[2] = LL[2]/2;
             break;
+        case 1:
+            //Eastern wall (x1)
+            newRR[0] = LL[0];
+            newRR[1] = 0;
+            newRR[2] = LL[2]/2;
+            break;
+        case 2:
+            //Southern wall (y0)
+            newRR[0] = 0;
+            newRR[1] = 0;
+            newRR[2] = LL[2]/2;
+            break;
+        case 3:
+            //Northern wall (y1)
+            newRR[0] = 0;
+            newRR[1] = LL[1];
+            newRR[2] = LL[2]/2;
+            break;
+        case 4:
+            //Bottom wall (z0)
+            newRR[0] = 0;
+            newRR[1] = LL[1]/2;
+            newRR[2] = 0;
+            break;
+        case 5:
+            //Top wall (z1)
+            newRR[0] = 0;
+            newRR[1] = LL[1]/2;
+            newRR[2] = LL[2];
+            break;
     }
+    std::cout << "CLOSEST WALL AND DISTANCE: " << min << ", " << mindistval <<'\n';
+    std::cout << "RR SAMPLING COORDINATES: " <<newRR[0] <<", " << newRR[1]<< ", "<< newRR[2] << '\n';
+    mxArray* temp = mxCreateDoubleMatrix(nMicrophones, nSamples, mxREAL);
+    double* temp2 =  mxGetPr(temp);
+    //incrememnt for wall
+    int incr = wSamples -1;
+    for(int i; i< wSamples; i++){
+        //modify this RIR to add delay, LPF, and figure out how much energy is lost from traveling through space
+        computeRIR(temp2,c,fs,newRR,nMicrophones,nSamples, ss, LL, beta, microphone_type, nOrder, microphone_angle, isHighPassFilter);
+        if(min <= 1){//go along x wall, increment y direction
+            newRR[1] += 1/incr;
+        }
+        else if(min <= 3){//go along y wall, increment x direction
+            newRR[0] += 1/incr;
+        }
+        else{//go along z wall, increment along x axis
+            newRR[0] += 1/incr;
+        }
+        addToLis(imp,temp2,nSamples,distWalltoDest[min],c);
+        clearList(temp2, nSamples);
+    }
+    
+    std::cout << "distance: " << distWalltoDest[min] <<", possible time delay? " << floor((distWalltoDest[min]/c)*nSamples) << '\n';
+    
+    //average out sample by amount of wall samples taken
+    for(int i; i< nSamples; i++){
+        imp[i] /= wSamples;
+    }
+    
+    
+    
     //loop throughout wall for number of samples, find RIR values, find distance between sample and final dest
     //sum each signal taking into account time delay
     
