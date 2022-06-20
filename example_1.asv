@@ -1,8 +1,8 @@
 c = 340;                    % Sound velocity (m/s)
 fs = 16000;                 % Sample frequency (samples/s)
-r = [6,3,4];              % Receiver position [x y z] (m)
+r = [4.9,3,4];              % Receiver position [x y z] (m)
 s = [2 3.5 2];              % Source position [x y z] (m)
-L = [6 4 6];                % Room dimensions [x y z] (m)
+L = [5 4 6];                % Room dimensions [x y z] (m)
 beta = 0.4;                 % Reverberation time (s)
 n = 4096;                   % Number of samples
 

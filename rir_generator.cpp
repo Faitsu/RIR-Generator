@@ -230,18 +230,19 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     plhs[0] = mxCreateDoubleMatrix(nMicrophones, nSamples, mxREAL);
     double* imp = mxGetPr(plhs[0]);
     
-    std::cout << "Microphone Location: " << rr[0] << ", "<< rr[1]<< ", " << rr[2] << ", num Microphones: "<< nMicrophones << '\n';
-    std::cout << "Room Max Wall Location: " << LL[0] << ", "<< LL[1]<< ", " << LL[2] << '\n';
+    //std::cout << "Microphone Location: " << rr[0] << ", "<< rr[1]<< ", " << rr[2] << ", num Microphones: "<< nMicrophones << '\n';
+    //std::cout << "Room Max Wall Location: " << LL[0] << ", "<< LL[1]<< ", " << LL[2] << '\n';
     if((rr[0] >= 0 && rr[1] >= 0 && rr[2] >= 0) && (rr[0] <= LL[0] && rr[1] <= LL[1] && rr[2] <= LL[2])){//if the microphone is within the room
         std::cout << "Microphone inside of the room! \n";
         computeRIR(imp, c, fs, rr, nMicrophones, nSamples, ss, LL, beta, microphone_type[0], nOrder, microphone_angle, isHighPassFilter);
     }
     else{
         std::cout << "Microphone outside of the room! \n";
-        std::cout << "SHOW ME WHAT THIS VARIABLE IS: " << plhs[0]<< '\n';
-        //number of wall samples to take along the wall
-        int wSamples = 5;
-        computeRIROutside(imp, c, fs, rr, nMicrophones, nSamples, ss, LL, beta, microphone_type[0], nOrder, microphone_angle, isHighPassFilter, wSamples);
+        if(nMicrophones > 1){
+         mexErrMsgTxt("Error: There is currently no functionality for calculating more than one microphone" 
+                      "outside a room at the same time. Please run this code with only one set of receiver coordinates");}
+        
+        computeRIROutside(imp, c, fs, rr, nMicrophones, nSamples, ss, LL, beta, microphone_type[0], nOrder, microphone_angle, isHighPassFilter);
     }
     
     if (nlhs > 1) {
